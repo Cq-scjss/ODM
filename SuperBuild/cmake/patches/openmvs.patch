@@ -1,0 +1,145 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index a42acd8..5df1d3d 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -60,6 +60,10 @@ SET(OpenMVS_VERSION ${OpenMVS_MAJOR_VERSION}.${OpenMVS_MINOR_VERSION}.${OpenMVS_
+ 
+ # Define helper functions and macros.
+ INCLUDE(build/Utils.cmake)
++if(MSVC)
++	SET(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} /NODEFAULTLIB:LIBCMT")
++	SET(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} /NODEFAULTLIB:LIBCMT")
++endif()
+ 
+ # Init session with macros defined in Utils.cmake
+ GetOperatingSystemArchitectureBitness(SYSTEM)
+@@ -186,7 +190,12 @@ if(OpenMVS_USE_PYTHON)
+ 	endif()
+ endif()
+ 
+-FIND_PACKAGE(Boost REQUIRED COMPONENTS iostreams program_options system serialization OPTIONAL_COMPONENTS python3)
++SET(OpenMVS_BOOST_COMPONENTS iostreams program_options system serialization)
++SET(OpenMVS_BOOST_OPTIONAL_COMPONENTS "")
++if(OpenMVS_USE_PYTHON)
++	LIST(APPEND OpenMVS_BOOST_OPTIONAL_COMPONENTS python3)
++endif()
++FIND_PACKAGE(Boost REQUIRED COMPONENTS ${OpenMVS_BOOST_COMPONENTS} OPTIONAL_COMPONENTS ${OpenMVS_BOOST_OPTIONAL_COMPONENTS})
+ if(Boost_FOUND)
+ 	LIST(APPEND OpenMVS_EXTRA_INCLUDES ${Boost_INCLUDE_DIRS})
+ 	INCLUDE_DIRECTORIES(${Boost_INCLUDE_DIRS})
+@@ -202,7 +211,18 @@ if(Boost_FOUND)
+ 	endif()
+ endif()
+ 
+-FIND_PACKAGE(Eigen3 REQUIRED)
++FIND_PACKAGE(Eigen3 REQUIRED CONFIG)
++# Compatibility shim: vcpkg's Eigen3Config (CONFIG mode) provides the
++# Eigen3::Eigen target but does NOT populate the legacy uppercase
++# EIGEN3_INCLUDE_DIR / EIGEN3_FOUND variables OpenMVS source uses. CMake's
++# CONFIG mode only sets the case-matched Eigen3_FOUND. Bridge both regardless
++# of whether the consumer pre-set EIGEN3_INCLUDE_DIR via -D on the cmd line.
++if(Eigen3_FOUND OR TARGET Eigen3::Eigen)
++	set(EIGEN3_FOUND TRUE)
++	if(NOT EIGEN3_INCLUDE_DIR AND TARGET Eigen3::Eigen)
++		get_target_property(EIGEN3_INCLUDE_DIR Eigen3::Eigen INTERFACE_INCLUDE_DIRECTORIES)
++	endif()
++endif()
+ if(EIGEN3_FOUND)
+ 	LIST(APPEND OpenMVS_EXTRA_INCLUDES ${EIGEN3_INCLUDE_DIR})
+ 	INCLUDE_DIRECTORIES(${EIGEN3_INCLUDE_DIR})
+@@ -212,15 +232,24 @@ if(EIGEN3_FOUND)
+ endif()
+ 
+ FIND_PACKAGE(OpenCV REQUIRED)
++if(MSVC)
++	LIST(FILTER OpenCV_LIBS EXCLUDE REGEX "cudart_static\\.lib$")
++endif()
+ if(OpenCV_FOUND)
+ 	LIST(APPEND OpenMVS_EXTRA_INCLUDES ${OpenCV_INCLUDE_DIRS})
+-	INCLUDE_DIRECTORIES(${OpenCV_INCLUDE_DIRS})
++	INCLUDE_DIRECTORIES(BEFORE ${OpenCV_INCLUDE_DIRS})
+ 	ADD_DEFINITIONS(${OpenCV_DEFINITIONS})
++	LIST(APPEND OpenMVS_EXTRA_LIBS ${OpenCV_LIBS})
+ 	SET(_USE_OPENCV TRUE)
+ 	MESSAGE(STATUS "OpenCV ${OpenCV_VERSION} found (include: ${OpenCV_INCLUDE_DIRS})")
+ else()
+ 	MESSAGE("-- Can't find OpenCV. Please specify OpenCV directory using OpenCV_DIR variable")
+ endif()
++FIND_PACKAGE(PNG REQUIRED)
++FIND_PACKAGE(ZLIB REQUIRED)
++FIND_PACKAGE(JPEG REQUIRED)
++FIND_PACKAGE(TIFF REQUIRED)
++LIST(APPEND OpenMVS_EXTRA_LIBS PNG::PNG ZLIB::ZLIB JPEG::JPEG TIFF::TIFF)
+ 
+ LIST(REMOVE_DUPLICATES OpenMVS_EXTRA_INCLUDES)
+ LIST(REMOVE_DUPLICATES OpenMVS_EXTRA_LIBS)
+diff --git a/libs/Common/UtilCUDA.cpp b/libs/Common/UtilCUDA.cpp
+index f6b2025..d286d34 100644
+--- a/libs/Common/UtilCUDA.cpp
++++ b/libs/Common/UtilCUDA.cpp
+@@ -180,7 +180,11 @@ CUresult initDevice(int deviceID)
+ 		return CUDA_ERROR_INVALID_DEVICE;
+ 	}
+ 	devices.Insert(device);
++	#if CUDA_VERSION >= 13000
++	checkCudaError(cuCtxCreate(&devices.Last().ctx, NULL, CU_CTX_SCHED_AUTO, device.ID));
++	#else
+ 	checkCudaError(cuCtxCreate(&devices.Last().ctx, CU_CTX_SCHED_AUTO, device.ID));
++	#endif
+ 
+ 	#if TD_VERBOSE != TD_VERBOSE_OFF
+ 	char name[2048];
+diff --git a/libs/Common/UtilCUDA.h b/libs/Common/UtilCUDA.h
+index a558198..d95724c 100644
+--- a/libs/Common/UtilCUDA.h
++++ b/libs/Common/UtilCUDA.h
+@@ -19,7 +19,11 @@
+ // CUDA toolkit
+ #include <cuda_runtime.h>
+ #include <cuda_runtime_api.h>
++#if __has_include(<cuda_texture_types.h>)
+ #include <cuda_texture_types.h>
++#else
++#include <texture_types.h>
++#endif
+ #include <curand_kernel.h>
+ #include <vector_types.h>
+ 
+diff --git a/libs/MVS/CMakeLists.txt b/libs/MVS/CMakeLists.txt
+index 60dccaf..068bb1a 100644
+--- a/libs/MVS/CMakeLists.txt
++++ b/libs/MVS/CMakeLists.txt
+@@ -48,7 +48,7 @@ endif()
+ 
+ # Link its dependencies
+ if(_USE_CUDA)
+-	SET_TARGET_PROPERTIES(MVS PROPERTIES CUDA_ARCHITECTURES "50;72;75")
++	SET_TARGET_PROPERTIES(MVS PROPERTIES CUDA_ARCHITECTURES "${CMAKE_CUDA_ARCHITECTURES}")
+ endif()
+ TARGET_LINK_LIBRARIES(MVS PRIVATE Common Math IO CGAL::CGAL ${CERES_LIBRARIES} ${CUDA_CUDA_LIBRARY})
+ 
+@@ -59,7 +59,7 @@ if(OpenMVS_USE_PYTHON)
+ 	)
+ 	# Link its dependencies
+ 	if(_USE_CUDA)
+-		SET_TARGET_PROPERTIES(pyOpenMVS PROPERTIES CUDA_ARCHITECTURES "50;72;75")
++		SET_TARGET_PROPERTIES(pyOpenMVS PROPERTIES CUDA_ARCHITECTURES "${CMAKE_CUDA_ARCHITECTURES}")
+ 	endif()
+ 	TARGET_LINK_LIBRARIES(pyOpenMVS PRIVATE MVS ${OpenMVS_EXTRA_LIBS})
+ 	# Suppress prefix "lib" because Python does not allow this prefix
+diff --git a/libs/MVS/PatchMatchCUDA.inl b/libs/MVS/PatchMatchCUDA.inl
+index 349cc33..72f4ec1 100644
+--- a/libs/MVS/PatchMatchCUDA.inl
++++ b/libs/MVS/PatchMatchCUDA.inl
+@@ -49,7 +49,11 @@
+ // CUDA toolkit
+ #include <cuda_runtime.h>
+ #include <cuda_runtime_api.h>
++#if __has_include(<cuda_texture_types.h>)
+ #include <cuda_texture_types.h>
++#else
++#include <texture_types.h>
++#endif
+ #include <curand_kernel.h>
+ #include <vector_types.h>
+ 

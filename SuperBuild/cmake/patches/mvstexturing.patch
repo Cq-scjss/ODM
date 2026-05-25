@@ -1,0 +1,27 @@
+diff --git a/apps/texrecon/CMakeLists.txt b/apps/texrecon/CMakeLists.txt
+index 1111111..2222222 100644
+--- a/apps/texrecon/CMakeLists.txt
++++ b/apps/texrecon/CMakeLists.txt
+@@ -6,5 +6,9 @@ set(BIN texrecon)
+ add_executable(${BIN} ${SOURCES})
+ set_property(TARGET ${BIN} PROPERTY INTERPROCEDURAL_OPTIMIZATION True)
+ include_directories(${TBB_INCLUDE_DIRS})
+-target_link_libraries(${BIN} tex ${TBB_LIBRARIES} ${MVE_MVE_LIBRARY} ${MVE_UTIL_LIBRARY})
++# mve.lib uses libpng/zlib/libjpeg/libtiff but its IMPORTED form does not carry
++# them as INTERFACE link dependencies. Add them explicitly so the texrecon
++# final link finds png_*, jpeg_*, tiff_* symbols.
++target_link_libraries(${BIN} tex ${TBB_LIBRARIES} ${MVE_MVE_LIBRARY} ${MVE_UTIL_LIBRARY}
++                     PNG::PNG ZLIB::ZLIB ${JPEG_LIBRARIES} ${TIFF_LIBRARIES})
+ install(TARGETS ${BIN} RUNTIME DESTINATION bin)
+diff --git a/elibs/CMakeLists.txt b/elibs/CMakeLists.txt
+index 1111111..2222222 100644
+--- a/elibs/CMakeLists.txt
++++ b/elibs/CMakeLists.txt
+@@ -1,6 +1,6 @@
+ externalproject_add(ext_mapmap
+     PREFIX          ext_mapmap
+-    GIT_REPOSITORY  https://github.com/dthuerck/mapmap_cpu
++    GIT_REPOSITORY  https://github.com/dthuerck/mapmap_cpu.git
+     GIT_TAG         fa526e0963ca3e431a02aa7b9e87b85ba8a8e304
+     UPDATE_COMMAND  ""
+     SOURCE_DIR      ${CMAKE_SOURCE_DIR}/elibs/mapmap

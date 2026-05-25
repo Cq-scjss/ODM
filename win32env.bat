@@ -17,11 +17,11 @@ set SBBIN=%ODMBASE%SuperBuild\install\bin
 set PDAL_DRIVER_PATH=%ODMBASE%SuperBuild\install\bin
 if not defined ODMDONTSETPYCACHE set PYTHONPYCACHEPREFIX=%PROGRAMDATA%\ODM\pycache
 
-set PATH=%SBBIN%;%OSFMBASE%
+set PATH=%SBBIN%;%OSFMBASE%;%PATH%
 set PROJ_LIB=%GDALBASE%\data\proj
 
 set VIRTUAL_ENV=%ODMBASE%venv
-set PYTHONPATH=%VIRTUAL_ENV%
+set PYTHONPATH=%VIRTUAL_ENV%;%ODMBASE%SuperBuild\install\lib\python3.13\dist-packages
 set PYENVCFG=%VIRTUAL_ENV%\pyvenv.cfg
 
 if not defined PROMPT set PROMPT=$P$G
@@ -38,7 +38,7 @@ set PYTHONHOME=
 if defined _OLD_VIRTUAL_PATH set PATH=%_OLD_VIRTUAL_PATH%
 if not defined _OLD_VIRTUAL_PATH set _OLD_VIRTUAL_PATH=%PATH%
 
-set PATH=%VIRTUAL_ENV%\Scripts;%PATH%
+set PATH=%VIRTUAL_ENV%\Scripts;D:\Env\Python3.13;%PATH%
 
 :END
 if defined _OLD_CODEPAGE (

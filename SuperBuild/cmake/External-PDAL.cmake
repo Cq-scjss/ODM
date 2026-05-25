@@ -20,7 +20,7 @@ ExternalProject_Add(${_proj_name}
   GIT_TAG           831631084edc7e61bc898eae136294c375b13d14
   #--Update/Patch step----------
   UPDATE_COMMAND    ""
-  PATCH_COMMAND    git apply ${CMAKE_MODULE_PATH}/pdal.patch
+  PATCH_COMMAND    ${CMAKE_COMMAND} -DPATCH_FILE=${CMAKE_MODULE_PATH}/pdal.patch -DWORKING_DIR=<SOURCE_DIR> -P ${CMAKE_MODULE_PATH}/ApplyGitPatch.cmake
   #--Configure step-------------
   SOURCE_DIR        ${SB_SOURCE_DIR}/${_proj_name}
   CMAKE_ARGS

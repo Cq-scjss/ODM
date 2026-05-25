@@ -1,0 +1,118 @@
+diff --git a/opensfm/src/CMakeLists.txt b/opensfm/src/CMakeLists.txt
+index c0a20615..6510ed0e 100644
+--- a/opensfm/src/CMakeLists.txt
++++ b/opensfm/src/CMakeLists.txt
+@@ -1,7 +1,18 @@
+-cmake_minimum_required(VERSION 3.0)
++cmake_minimum_required(VERSION 3.10)
++
++if(POLICY CMP0148)
++  cmake_policy(SET CMP0148 OLD)
++endif()
++if(POLICY CMP0174)
++  cmake_policy(SET CMP0174 NEW)
++endif()
+ 
+ project(opensfm C CXX)
+ 
++if(DEFINED EIGEN3_INCLUDE_DIR)
++  set(_opensfm_legacy_eigen_include_dir "${EIGEN3_INCLUDE_DIR}")
++endif()
++
+ if(NOT CMAKE_BUILD_TYPE)
+   set(CMAKE_BUILD_TYPE Release CACHE STRING
+       "Choose the type of build, options are: None Debug Release RelWithDebInfo MinSizeRel."
+@@ -10,7 +21,7 @@ endif()
+ 
+ if (WIN32)
+ # Fixes a problem with finding/linking suitesparse :/
+-set(CMAKE_MODULE_PATH ${opensfm_SOURCE_DIR}/cmake/win32)
++set(CMAKE_MODULE_PATH ${opensfm_SOURCE_DIR}/cmake/win32 ${opensfm_SOURCE_DIR}/cmake)
+ else()
+ set(CMAKE_MODULE_PATH ${opensfm_SOURCE_DIR}/cmake)
+ endif()
+@@ -66,10 +77,24 @@ if (YET_ADDITIONAL_INCLUDE_DIRS)
+ endif()
+ 
+ find_package(LAPACK)
+-find_package(SuiteSparse)
++find_package(SuiteSparse MODULE)
+ find_package(Eigen3 REQUIRED)
+-find_package(Ceres REQUIRED)
++# Force MODULE mode so OpenSfM's bundled cmake/FindCeres.cmake runs and
++# populates the legacy CERES_INCLUDE_DIR / CERES_LIBRARIES variables that
++# bundle/, geometry/, sfm/, robust/ subdirs use directly. vcpkg's CeresConfig
++# (CONFIG mode) actively unsets those variables, so we cannot use it here.
++find_package(Ceres MODULE REQUIRED)
++# Sub-CMakeLists only add ${CERES_INCLUDE_DIR}/ceres/internal/miniglog (for
++# glog stub headers), not ${CERES_INCLUDE_DIR} itself. Make the real Ceres
++# headers visible to every target without touching each subdir's CMakeLists.
++include_directories(${CERES_INCLUDE_DIR})
++if (ODM_PYTHON_INCLUDE_DIR)
++  include_directories(BEFORE ${ODM_PYTHON_INCLUDE_DIR})
++endif()
++add_definitions(-DGLOG_USE_GLOG_EXPORT)
+ find_package(Gflags)
++find_package(glog CONFIG REQUIRED)
++link_libraries(glog::glog)
+ 
+ find_package(OpenCV)
+ # OpenCV's OpenCVConfig will enforce imgcodecs for < 3.0
+@@ -80,6 +105,7 @@ if(${OpenCV_VERSION} LESS 3.0)
+ else()
+     find_package(OpenCV REQUIRED core imgproc calib3d OPTIONAL_COMPONENTS imgcodecs)
+ endif()
++include_directories(BEFORE ${OpenCV_INCLUDE_DIRS})
+ 
+ ####### Third party libraries #######
+ add_subdirectory(third_party/pybind11)
+@@ -130,4 +156,4 @@ add_subdirectory(geo)
+ add_subdirectory(geometry)
+ add_subdirectory(robust)
+ add_subdirectory(sfm)
+-add_subdirectory(map)
+\ No newline at end of file
++add_subdirectory(map)
+diff --git a/opensfm/src/cmake/win32/FindCeres.cmake b/opensfm/src/cmake/win32/FindCeres.cmake
+index 74e2a797..45118a08 100644
+--- a/opensfm/src/cmake/win32/FindCeres.cmake
++++ b/opensfm/src/cmake/win32/FindCeres.cmake
+@@ -46,7 +46,7 @@ FIND_LIBRARY(CERES_LIBRARY
+ # handle the QUIETLY and REQUIRED arguments and set CERES_FOUND to TRUE if
+ # all listed variables are TRUE
+ INCLUDE(FindPackageHandleStandardArgs)
+-FIND_PACKAGE_HANDLE_STANDARD_ARGS(ceres DEFAULT_MSG
++FIND_PACKAGE_HANDLE_STANDARD_ARGS(Ceres DEFAULT_MSG
+     CERES_LIBRARY CERES_INCLUDE_DIR)
+ 
+ IF(CERES_FOUND)
+diff --git a/opensfm/src/features/CMakeLists.txt b/opensfm/src/features/CMakeLists.txt
+index e776a12f..110cb520 100644
+--- a/opensfm/src/features/CMakeLists.txt
++++ b/opensfm/src/features/CMakeLists.txt
+@@ -18,11 +18,13 @@ target_link_libraries(features
+ target_include_directories(features PRIVATE ${CMAKE_SOURCE_DIR})
+ 
+ pybind11_add_module(pyfeatures python/pybind.cc)
++target_include_directories(pyfeatures BEFORE PRIVATE ${OpenCV_INCLUDE_DIRS})
+ target_include_directories(pyfeatures PRIVATE ${GLOG_INCLUDE_DIR})
+ target_link_libraries(pyfeatures
+   PRIVATE
+     features
+     foundation
++    ${OpenCV_LIBS}
+     akaze
+ )
+ set_target_properties(pyfeatures PROPERTIES
+diff --git a/opensfm/src/third_party/akaze/CMakeLists.txt b/opensfm/src/third_party/akaze/CMakeLists.txt
+index 537b4972..1fa09c08 100644
+--- a/opensfm/src/third_party/akaze/CMakeLists.txt
++++ b/opensfm/src/third_party/akaze/CMakeLists.txt
+@@ -11,6 +11,7 @@ set(AKAZE_SRCS
+ )
+ add_library(akaze ${AKAZE_SRCS})
+ target_link_libraries(akaze ${OpenCV_LIBS})
++target_include_directories(akaze BEFORE PRIVATE ${OpenCV_INCLUDE_DIRS})
+ target_include_directories(akaze
+   PUBLIC
+     ${CMAKE_SOURCE_DIR}/third_party/akaze/lib

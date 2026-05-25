@@ -1,0 +1,19 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 1111111..2222222 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -27,10 +27,11 @@ include_directories(${GDAL_INCLUDE_DIR} ${EIGEN3_INCLUDE_DIR})
+ # Find OpenCV at the default location
+ find_package(OpenCV HINTS "${OPENCV_DIR}" REQUIRED)
+ 
+-# Only link with required opencv modules.
+-set(OpenCV_LIBS opencv_core opencv_imgproc opencv_highgui opencv_photo)
++# OpenCV_LIBS is populated by find_package and carries the vcpkg imported
++# targets. Keep OpenCV's opencv4 include directory before vcpkg's legacy
++# include root, otherwise stale opencv2 headers can be picked up.
+ 
+-include_directories(${OpenCV_INCLUDE_DIRS})
++include_directories(BEFORE ${OpenCV_INCLUDE_DIRS})
+ 
+ # Add source directory
+ aux_source_directory("./src" SRC_LIST)

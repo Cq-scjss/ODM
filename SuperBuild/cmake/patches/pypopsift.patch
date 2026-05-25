@@ -1,0 +1,13 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -17,6 +17,9 @@ FetchContent_MakeAvailable(popsift)
+ find_package(pybind11)
+ 
+ pybind11_add_module(pypopsift src/main.cpp src/popsift.cpp)
++if (ODM_PYTHON_INCLUDE_DIR)
++  target_include_directories(pypopsift BEFORE PRIVATE ${ODM_PYTHON_INCLUDE_DIR})
++endif()
+ target_link_libraries(pypopsift PUBLIC popsift)
+ 
+ if (DEFINED OUTPUT_DIR)

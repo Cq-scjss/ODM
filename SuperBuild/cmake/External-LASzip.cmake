@@ -18,6 +18,7 @@ ExternalProject_Add(${_proj_name}
     -DBUILD_STATIC_LIBS=OFF
     -DCMAKE_INSTALL_PREFIX=${SB_INSTALL_DIR}
     -DCMAKE_INSTALL_LIBDIR=lib
+    ${WIN32_CMAKE_ARGS}
   #--Build step-----------------
   BINARY_DIR        ${_SB_BINARY_DIR}
   #--Install step---------------

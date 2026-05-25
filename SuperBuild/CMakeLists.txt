@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.1)
+cmake_minimum_required(VERSION 3.5...3.31)
 
 project(ODM-SuperBuild)
 
@@ -90,9 +90,70 @@ if (WIN32)
     endif()
     get_filename_component(CMAKE_TOOLCHAIN_DIR ${CMAKE_TOOLCHAIN_FILE} DIRECTORY)
     get_filename_component(VCPKG_ROOT "${CMAKE_TOOLCHAIN_DIR}/../../" ABSOLUTE)
-    set(WIN32_CMAKE_ARGS "-DCMAKE_TOOLCHAIN_FILE=${CMAKE_TOOLCHAIN_FILE}")
-    set(PYTHON_HOME "${SB_ROOT_DIR}/../venv")
+    # CMAKE_POLICY_VERSION_MINIMUM=3.5 cascades to all ExternalProjects so that
+    # third-party deps with cmake_minimum_required(VERSION < 3.5) (laszip, mve,
+    # gflags, lastools, odm_orthophoto, dem2mesh, dem2points, etc.) still
+    # configure under modern CMake (4.x dropped support for VERSION < 3.5).
+    # CMAKE_FIND_PACKAGE_PREFER_CONFIG=ON makes find_package prefer vcpkg's
+    # *Config.cmake files over legacy Find*.cmake modules.
+    # EIGEN3_INCLUDE_DIR fallback: vcpkg's Eigen3Config provides only the
+    # Eigen3::Eigen target (CONFIG mode) without the legacy variable; some
+    # downstream modules still query the variable directly. (Note: OpenMVS
+    # itself is patched to derive EIGEN3_INCLUDE_DIR from the imported target;
+    # see cmake/patches/openmvs.patch.)
+    # CMP0146/CMP0167 = OLD: keep legacy FindCUDA / FindBoost modules available
+    # so OpenMVS / PyPopsift's `find_package(CUDA)` and `find_package(Boost)`
+    # calls don't error out under CMake 4.x.
+    set(WIN32_CMAKE_ARGS
+        "-DCMAKE_TOOLCHAIN_FILE=${CMAKE_TOOLCHAIN_FILE}"
+        "-DCMAKE_POLICY_VERSION_MINIMUM=3.5"
+        "-DCMAKE_POLICY_DEFAULT_CMP0146=OLD"
+        "-DCMAKE_POLICY_DEFAULT_CMP0167=OLD"
+        "-DCMAKE_FIND_PACKAGE_PREFER_CONFIG=ON"
+        "-DEIGEN3_INCLUDE_DIR=${VCPKG_ROOT}/installed/x64-windows/include/eigen3"
+    )
+    set(PYTHON_HOME "${SB_ROOT_DIR}/../../.venv")
     set(PYTHON_EXE_PATH "${PYTHON_HOME}/Scripts/python")
+
+    # Resolve the system Python install (sys.base_prefix) from the venv.
+    # Native extension modules (pypopsift, pdal-python) need the Python C
+    # headers and import library which live in the system Python install,
+    # not in the venv (which only has python.exe redirecting to base).
+    execute_process(
+        COMMAND "${PYTHON_EXE_PATH}" -c "import sys, os; print(sys.base_prefix.replace(os.sep, '/'))"
+        OUTPUT_VARIABLE SYSTEM_PYTHON_HOME
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+    )
+    execute_process(
+        COMMAND "${PYTHON_EXE_PATH}" -c "import sys; print(f'{sys.version_info.major}{sys.version_info.minor}')"
+        OUTPUT_VARIABLE PYTHON_VER_NODOT
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+    )
+    execute_process(
+        COMMAND "${PYTHON_EXE_PATH}" -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')"
+        OUTPUT_VARIABLE PYTHON_VER_DOT
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+    )
+    set(SYSTEM_PYTHON_INCLUDE_DIR "${SYSTEM_PYTHON_HOME}/include")
+    set(SYSTEM_PYTHON_LIBRARY     "${SYSTEM_PYTHON_HOME}/libs/python${PYTHON_VER_NODOT}.lib")
+    set(SYSTEM_PYTHON_EXTENSION_INCLUDE_DIR "${SYSTEM_PYTHON_INCLUDE_DIR}")
+    set(SYSTEM_PYTHON_T_LIBRARY "${SYSTEM_PYTHON_HOME}/libs/python${PYTHON_VER_NODOT}t.lib")
+    set(SYSTEM_PYTHON_PYCONFIG "${SYSTEM_PYTHON_INCLUDE_DIR}/pyconfig.h")
+    if(EXISTS "${SYSTEM_PYTHON_PYCONFIG}" AND NOT EXISTS "${SYSTEM_PYTHON_T_LIBRARY}")
+        file(READ "${SYSTEM_PYTHON_PYCONFIG}" _python_pyconfig)
+        string(FIND "${_python_pyconfig}" "#define Py_GIL_DISABLED 1" _python_gil_disabled_index)
+        if(NOT _python_gil_disabled_index EQUAL -1)
+            set(SYSTEM_PYTHON_EXTENSION_INCLUDE_DIR "${SB_BINARY_DIR}/python${PYTHON_VER_DOT}-include")
+            file(REMOVE_RECURSE "${SYSTEM_PYTHON_EXTENSION_INCLUDE_DIR}")
+            file(COPY "${SYSTEM_PYTHON_INCLUDE_DIR}/" DESTINATION "${SYSTEM_PYTHON_EXTENSION_INCLUDE_DIR}")
+            string(REPLACE "#ifndef Py_GIL_DISABLED\n#define Py_GIL_DISABLED 1\n#endif"
+                           "/* Py_GIL_DISABLED intentionally left undefined for python${PYTHON_VER_NODOT}.lib ABI. */"
+                           _python_pyconfig "${_python_pyconfig}")
+            file(WRITE "${SYSTEM_PYTHON_EXTENSION_INCLUDE_DIR}/pyconfig.h" "${_python_pyconfig}")
+            message(STATUS "Using non-free-threaded Python headers: ${SYSTEM_PYTHON_EXTENSION_INCLUDE_DIR}")
+        endif()
+    endif()
+    message(STATUS "System Python: ${SYSTEM_PYTHON_HOME} (lib: python${PYTHON_VER_NODOT})")
 
     message("Copying VCPKG DLLs...")
     file(GLOB COPY_DLLS "${VCPKG_ROOT}/installed/x64-windows/bin/*.dll")
@@ -114,13 +175,20 @@ if (WIN32)
     file(GLOB PROJ_DATA "${VCPKG_ROOT}/installed/x64-windows/share/proj/*")
     file(COPY ${PROJ_DATA} DESTINATION "${SB_INSTALL_DIR}/bin/data/proj")
 
-    # GDAL comes from vcpkg, create a dummy target to satisfy dependencies
+    # GDAL/OpenCV come from vcpkg; create dummy targets to satisfy `DEPENDS`
+    # in downstream externals. Ceres also from vcpkg but its dummy target is
+    # created inside External-Ceres.cmake (because find_package(Ceres EXACT
+    # 2.0.0) fails against vcpkg's 2.2.0, so External-Ceres.cmake gets
+    # included). For GDAL/OpenCV the EXACT versions match vcpkg, so
+    # External-{GDAL,OpenCV}.cmake are *not* included by SETUP_EXTERNAL_PROJECT,
+    # and we must create the dummy targets here.
     add_custom_target(gdal)
+    add_custom_target(opencv)
 elseif(APPLE)
-    set(PYTHON_HOME "${SB_ROOT_DIR}/../venv")
+    set(PYTHON_HOME "${SB_ROOT_DIR}/../../.venv")
     set(PYTHON_EXE_PATH "${PYTHON_HOME}/bin/python")
 else()
-    set(PYTHON_HOME "${SB_ROOT_DIR}/../venv")
+    set(PYTHON_HOME "${SB_ROOT_DIR}/../../.venv")
     set(PYTHON_EXE_PATH "${PYTHON_HOME}/bin/python3")
 endif()
 
@@ -261,7 +329,9 @@ externalproject_add(odm_orthophoto
     GIT_TAG           355
     PREFIX            ${SB_BINARY_DIR}/odm_orthophoto
     SOURCE_DIR        ${SB_SOURCE_DIR}/odm_orthophoto
+    PATCH_COMMAND     ${CMAKE_COMMAND} -DPATCH_FILE=${CMAKE_MODULE_PATH}/patches/odm_orthophoto.patch -DWORKING_DIR=<SOURCE_DIR> -DPATCH_APPLIED_FILE=CMakeLists.txt "-DPATCH_APPLIED_PATTERN=include_directories(BEFORE" -P ${CMAKE_MODULE_PATH}/ApplyGitPatch.cmake
     CMAKE_ARGS        -DCMAKE_INSTALL_PREFIX:PATH=${SB_INSTALL_DIR}
+                      -DOpenCV_DIR=${VCPKG_ROOT}/installed/x64-windows/share/opencv4
                       ${WIN32_CMAKE_ARGS}
 )
 
@@ -281,6 +351,7 @@ externalproject_add(lastools
     PREFIX            ${SB_BINARY_DIR}/lastools
     SOURCE_DIR        ${SB_SOURCE_DIR}/lastools
     CMAKE_ARGS        -DCMAKE_INSTALL_PREFIX:PATH=${SB_INSTALL_DIR}
+                      ${WIN32_CMAKE_ARGS}
 )
 
 externalproject_add(draco

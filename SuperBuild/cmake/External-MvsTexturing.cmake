@@ -12,6 +12,7 @@ ExternalProject_Add(${_proj_name}
   GIT_TAG           c5a4d0c9a434553533c6e39d426e349fcfa5f48d
   #--Update/Patch step----------
   UPDATE_COMMAND    ""
+  PATCH_COMMAND     ${CMAKE_COMMAND} -DPATCH_FILE=${CMAKE_MODULE_PATH}/patches/mvstexturing.patch -DWORKING_DIR=<SOURCE_DIR> -DPATCH_APPLIED_FILE=elibs/CMakeLists.txt "-DPATCH_APPLIED_PATTERN=mapmap_cpu.git" -P ${CMAKE_MODULE_PATH}/ApplyGitPatch.cmake
   #--Configure step-------------
   SOURCE_DIR        ${SB_SOURCE_DIR}/${_proj_name}
   CMAKE_ARGS

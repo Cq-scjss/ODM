@@ -12,16 +12,14 @@ externalproject_add(vcg
     INSTALL_COMMAND ""
 )
 
-externalproject_add(eigen34
-    GIT_REPOSITORY  https://gitlab.com/libeigen/eigen.git
-    GIT_TAG         7176ae16238ded7fb5ed30a7f5215825b3abd134
-    UPDATE_COMMAND  ""
-    SOURCE_DIR      ${SB_SOURCE_DIR}/eigen34
-    CONFIGURE_COMMAND ""
-    BUILD_IN_SOURCE 1
-    BUILD_COMMAND   ""
-    INSTALL_COMMAND ""
-)
+# NOTE: eigen34 sub-project removed.
+# OpenMVS now uses Eigen from vcpkg (eigen3:x64-windows, currently 5.0.1) via
+# the toolchain file. OpenMVS's find_package(Eigen3 ...) will resolve to vcpkg
+# automatically. This avoids ODR violations when the same translation units
+# also pull in Ceres headers (which are compiled against vcpkg's Eigen 5.0.1).
+# If Eigen 5.0 turns out to break OpenMVS source compatibility, restore the
+# eigen34 sub-project here and pass -DEIGEN3_INCLUDE_DIR=${SB_SOURCE_DIR}/eigen34/
+# to the ExternalProject_Add below.
 
 SET(ARM64_CMAKE_ARGS "")
 
@@ -46,7 +44,7 @@ if(WIN32)
 endif()
 
 ExternalProject_Add(${_proj_name}
-  DEPENDS           ceres opencv vcg eigen34
+  DEPENDS           ceres opencv vcg
   PREFIX            ${_SB_BINARY_DIR}
   TMP_DIR           ${_SB_BINARY_DIR}/tmp
   STAMP_DIR         ${_SB_BINARY_DIR}/stamp
@@ -56,16 +54,22 @@ ExternalProject_Add(${_proj_name}
   GIT_TAG           355
   #--Update/Patch step----------
   UPDATE_COMMAND    ""
+  PATCH_COMMAND     ${CMAKE_COMMAND} -DPATCH_FILE=${CMAKE_MODULE_PATH}/patches/openmvs.patch -DWORKING_DIR=<SOURCE_DIR> -P ${CMAKE_MODULE_PATH}/ApplyGitPatch.cmake
   #--Configure step-------------
   SOURCE_DIR        ${SB_SOURCE_DIR}/${_proj_name}
   CMAKE_ARGS
     -DOpenCV_DIR=${SB_INSTALL_DIR}/lib/cmake/opencv4
     -DVCG_ROOT=${SB_SOURCE_DIR}/vcg
-    -DEIGEN3_INCLUDE_DIR=${SB_SOURCE_DIR}/eigen34/
     -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
+    -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreadedDLL
+    -DCMAKE_CUDA_RUNTIME_LIBRARY=Shared
+    -DCMAKE_CUDA_ARCHITECTURES=86
     -DCMAKE_INSTALL_PREFIX=${SB_INSTALL_DIR}
     -DOpenMVS_ENABLE_TESTS=OFF
-    -DOpenMVS_MAX_CUDA_COMPATIBILITY=ON
+    -DOpenMVS_USE_CERES=ON
+    -DOpenMVS_USE_PYTHON=OFF
+    -DOpenMVS_USE_BREAKPAD=OFF
+    -DOpenMVS_MAX_CUDA_COMPATIBILITY=OFF
     ${GPU_CMAKE_ARGS}
     ${WIN32_CMAKE_ARGS}
     ${ARM64_CMAKE_ARGS}

@@ -37,3 +37,4 @@ dist/
 innosetup/
 azuresigning/
 .DS_Store
+/build_sb

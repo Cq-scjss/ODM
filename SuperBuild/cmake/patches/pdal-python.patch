@@ -1,0 +1,27 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 1111111..2222222 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -15,6 +15,11 @@ set(Python3_FIND_FRAMEWORK "LAST")
+ # Development vs. Development.Module
+ # https://cmake.org/cmake/help/latest/module/FindPython3.html?highlight=Development.Module
+-if (${CMAKE_VERSION} VERSION_GREATER_EQUAL "3.18.0" AND NOT APPLE)
++# On Windows with the vcpkg toolchain, the Python3 wrapper forces vcpkg's
++# python312 development files. We use pybind11's legacy Python discovery for
++# the extension module and only ask FindPython3 for the interpreter and NumPy.
++if (WIN32)
++    set(DEVELOPMENT_COMPONENT "")
++elseif (${CMAKE_VERSION} VERSION_GREATER_EQUAL "3.18.0" AND NOT APPLE)
+     set(DEVELOPMENT_COMPONENT "Development.Module")
+ else()
+     set(DEVELOPMENT_COMPONENT "Development")
+@@ -37,6 +42,9 @@ pybind11_add_module(${extension} MODULE
+     src/pdal/StreamableExecutor.cpp
+     src/pdal/libpdalpython.cpp
+ )
++if(WIN32 AND DEFINED ODM_PYTHON_INCLUDE_DIR)
++    target_include_directories(${extension} BEFORE PRIVATE ${ODM_PYTHON_INCLUDE_DIR})
++endif()
+ target_include_directories(${extension} PRIVATE ${Python3_NumPy_INCLUDE_DIRS})
+ target_link_libraries(${extension} PRIVATE ${PDAL_LIBRARIES})
+ install(TARGETS ${extension} LIBRARY DESTINATION "pdal")
