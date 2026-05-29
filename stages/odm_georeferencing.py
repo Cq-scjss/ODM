@@ -1,7 +1,7 @@
 import os
 import shutil
 import struct
-import pipes
+# 'pipes' removed in Python 3.13; this import was unused in ODM code
 import fiona
 import fiona.crs
 import json

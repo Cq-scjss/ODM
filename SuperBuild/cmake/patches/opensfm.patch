@@ -66,13 +66,6 @@ index c0a20615..6510ed0e 100644
  
  ####### Third party libraries #######
  add_subdirectory(third_party/pybind11)
-@@ -130,4 +156,4 @@ add_subdirectory(geo)
- add_subdirectory(geometry)
- add_subdirectory(robust)
- add_subdirectory(sfm)
--add_subdirectory(map)
-\ No newline at end of file
-+add_subdirectory(map)
 diff --git a/opensfm/src/cmake/win32/FindCeres.cmake b/opensfm/src/cmake/win32/FindCeres.cmake
 index 74e2a797..45118a08 100644
 --- a/opensfm/src/cmake/win32/FindCeres.cmake

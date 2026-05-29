@@ -350,6 +350,7 @@ externalproject_add(lastools
     GIT_TAG           250
     PREFIX            ${SB_BINARY_DIR}/lastools
     SOURCE_DIR        ${SB_SOURCE_DIR}/lastools
+    UPDATE_DISCONNECTED 1  # 跳过 git fetch/reset, 保留我们对 .cpp 加的 UTF-8 BOM
     CMAKE_ARGS        -DCMAKE_INSTALL_PREFIX:PATH=${SB_INSTALL_DIR}
                       ${WIN32_CMAKE_ARGS}
 )
